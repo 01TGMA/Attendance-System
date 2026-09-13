@@ -1,87 +1,137 @@
-# Smart Attendance Management & Examination Eligibility System
+# Smart Attendance Management and Examination Eligibility System
 
-Stack: HTML / CSS / vanilla JS + Supabase (Auth, Postgres, Realtime)
-Design: converted from the v0-generated React/Tailwind UI (green `#16A34A` + white theme).
+A web-based application that digitizes classroom attendance using QR codes, automatically calculates attendance marks and percentages, and determines examination eligibility based on configurable institutional thresholds.
 
-## ✅ Current state — Phase 1 UI is built and running on mock data
+## Overview
 
-All 8 screens are implemented as static pages driven by `js/lib/store.js`
-(mock data + localStorage-based fake auth). Nothing touches a network yet —
-open `index.html` in a local server and click through the whole app.
+Traditional paper-based attendance is time-consuming, hard to maintain, and vulnerable to proxy attendance (a student signing in for someone who isn't present). This system replaces manual sign-in sheets with a QR-code-based workflow, backed by student authentication and anti-fraud controls, so attendance records are faster to collect and harder to manipulate.
 
-**Try it:**
-```bash
-cd attendance-system
-python3 -m http.server 8080
-# visit http://localhost:8080
+## Problem Statement
+
+- Manual attendance consumes lecture time.
+- Paper-based methods are easy to manipulate via proxy attendance.
+- Calculating attendance percentages by hand is error-prone, especially across multiple courses.
+- Students often don't know their attendance status until eligibility is decided at the end of the semester.
+
+## Aim
+
+Develop a web-based attendance management system that records attendance reliably, calculates attendance performance automatically, and determines examination eligibility in real time.
+
+## Objectives
+
+- Provide a user-friendly web app for managing attendance.
+- Let lecturers create attendance sessions and generate QR codes.
+- Authenticate students before recording attendance.
+- Prevent proxy and duplicate attendance.
+- Automatically assign attendance marks per session.
+- Track attendance records per student/course throughout the semester.
+- Calculate attendance percentage and display eligibility status in real time.
+- Reduce administrative overhead for lecturers.
+
+## User Roles
+
+### Lecturer
+- Create and manage courses
+- Create attendance sessions and set marks per session
+- Generate and display QR codes
+- Monitor attendance and view accumulated marks
+- Configure minimum attendance percentage for eligibility
+
+### Student
+- Log in and view registered courses
+- Scan attendance QR codes
+- View attendance history, marks, and percentage
+- Check real-time examination eligibility status
+
+## How It Works
+
+1. **Session Creation** – Lecturer selects a course and creates an attendance session with an assigned mark (e.g., 2 marks).
+2. **QR Code Generation** – System generates a session-specific QR code, projected in the classroom.
+3. **Scan** – Students scan the QR code with their device.
+4. **Authentication** – Student identity is verified and course enrollment is checked.
+5. **Validation** – System checks for duplicates and applies anti-abuse controls (session ID, timestamps, IP as a secondary signal).
+6. **Recording** – Valid attendance is recorded and marks are assigned.
+7. **Semester Calculation** – Attendance percentage, total marks, and eligibility are recalculated automatically.
+8. **Eligibility Check** – Percentage is compared against the configured threshold (e.g., 75%) to show *Eligible* or *Not Currently Eligible*.
+
 ```
-Log in as either role (any email/password works — it's mocked). Student flow:
-Dashboard → My Courses → Scan (real camera QR reader) → Profile.
-Lecturer flow: Dashboard → Manage a course → Sessions/Roster tabs → Create
-Session → live QR code with countdown + simulated live check-ins.
-
-## Folder Structure
-
-```
-attendance-system/
-├── index.html                  # Login / Register (role tabs: student/lecturer)
-├── pages/
-│   ├── student/
-│   │   ├── dashboard.html      # Attendance %, marks, eligibility status
-│   │   ├── courses.html        # Per-course attendance + marks cards
-│   │   ├── scan.html           # Real camera QR scanner (html5-qrcode)
-│   │   └── profile.html
-│   └── lecturer/
-│       ├── dashboard.html      # Course grid + "Create Course"
-│       ├── course.html         # Sessions tab + Roster tab (?courseId=...)
-│       ├── session.html        # Create session form → live QR + countdown + arrivals feed
-│       └── profile.html
-├── css/
-│   ├── style.css               # Design tokens + base components (buttons, cards, badges, inputs, tabs, avatar, progress)
-│   └── dashboard.css           # App shell, auth layout, scan page, session live view, all page-specific layout
-├── js/
-│   ├── lib/
-│   │   ├── icons.js            # Inline SVG icon set (no external icon font/CDN needed)
-│   │   ├── store.js            # Mock data + auth session (the seam that becomes Supabase calls)
-│   │   ├── shell.js            # Renders header + sidebar/bottom nav on every dashboard page
-│   │   └── client.js           # Supabase client init — NOT wired in yet, needs your project URL/key
-│   ├── auth/auth.js             # Login/register form logic, role tabs
-│   ├── student/{dashboard,courses,scan,profile}.js
-│   └── lecturer/{dashboard,course,session,profile}.js
-├── sql/
-│   ├── schema.sql               # Tables: profiles, courses, enrollments, sessions, attendance_records
-│   ├── policies.sql             # RLS: enrollment check, session expiry, ownership — Phase 2
-│   └── functions.sql            # attendance_percentage() / is_eligible() — Phase 3
-└── .env.example
+Lecturer → Creates Session → QR Code Generated → QR Displayed → Student Scans →
+Student Authenticated → Attendance Validated → Attendance Recorded →
+Marks Updated → Percentage Calculated → Eligibility Determined
 ```
 
-## Every `TODO(supabase)` marks a seam
+## Core Features
 
-Search the JS files for `TODO(supabase)` — each one is a comment at the exact
-call site explaining what mock logic to rip out and what real Supabase query
-replaces it. That's the map for the next phase.
+- **QR Code Attendance** – Session-specific, ideally short-lived/expiring codes.
+- **Student Authentication** – Required before any attendance is accepted.
+- **Duplicate Prevention** – One attendance record per student per session.
+- **Attendance Marks** – Configurable per session, auto-added to student records.
+- **Attendance Percentage** – `(Classes Attended ÷ Total Classes Held) × 100`
+- **Examination Eligibility** – Auto-compared against a configurable threshold.
+- **Lecturer Dashboard** – Manage courses, sessions, students, and records.
+- **Student Dashboard** – View courses, history, marks, percentage, and eligibility.
 
-## Wiring Supabase in — next steps in order
+## System Architecture
 
-1. Create a Supabase project → run `sql/schema.sql` in the SQL editor.
-2. Fill in `js/lib/client.js` with your project URL + anon key.
-3. Add `<script type="module" src=".../js/lib/client.js">` where needed, or
-   convert it to a plain (non-module) script that sets `window.supabase`.
-4. Replace `Store.login/logout/getUser` in `store.js` with
-   `supabase.auth.signInWithPassword / signUp / signOut / getSession`.
-5. Replace `Store.studentCourses()` / `Store.lecturerCourses()` with real
-   `.from(table).select()` queries (see the TODO comment at each call site).
-6. Run `sql/policies.sql` — this is what actually enforces "no duplicate
-   scans / no expired sessions / no unenrolled students", not the client JS.
-7. Swap the simulated live-arrivals `setInterval` in `session.js` for a
-   Supabase Realtime subscription on `attendance_records` inserts.
-8. Run `sql/functions.sql` and use `attendance_percentage()` / `is_eligible()`
-   instead of the client-side `attendancePct()` / `isEligible()` helpers for
-   anything that must be tamper-proof (the eligibility badge shown to a
-   student should ultimately be server-computed, not just client math).
+**Presentation Layer** — Student/lecturer interfaces, login, QR scanner, dashboards (HTML/CSS/JS).
 
-## Notes
-- No backend server needed — Supabase Postgres + RLS is the "backend."
-- Never trust client-side JS for expiry/duplicate checks — enforce via RLS/SQL functions.
-- QR generation: `qrcode` library via CDN (`js/lecturer/session.js`).
-- QR scanning: `html5-qrcode` via CDN (`js/student/scan.js`) — real camera access, requires HTTPS or localhost.
+**Application Layer** — Authentication, QR/session validation, mark and eligibility calculation, access control, duplicate prevention (backend framework of choice: Python, Node.js, PHP, Java, etc.).
+
+**Database Layer** — Student/lecturer accounts, courses, registrations, sessions, attendance records, marks, and eligibility rules (relational DB such as MySQL or PostgreSQL).
+
+## Security & Anti-Fraud Considerations
+
+IP-based restriction alone is insufficient — many students can share one IP (e.g., campus Wi-Fi) while it's also bypassable. The system instead layers multiple controls:
+
+1. Student authentication
+2. Course enrollment verification
+3. Short-lived QR codes
+4. Unique session identifiers
+5. One record per student per session
+6. Server-side timestamp validation
+7. IP logging as a secondary signal only
+8. Suspicious activity detection
+9. Lecturer access controls
+10. Secure credential storage
+
+**Note:** The goal is to make fraudulent attendance significantly harder, not to guarantee it is impossible.
+
+## User Flows
+
+**Student:** Login → Select/Enter Attendance → Scan QR → Confirm → Attendance Recorded
+
+**Lecturer:** Login → Select Course → Create Session → Set Mark → Display QR → Monitor Attendance
+
+## Benefits
+
+| Stakeholder | Benefits |
+|---|---|
+| Students | Faster check-in, transparent records, early eligibility awareness |
+| Lecturers | Less time on attendance, automatic calculations, easier monitoring |
+| Institution | Centralized records, reduced proxy attendance, easier policy enforcement |
+
+## Limitations
+
+- Does not fully eliminate fraud (e.g., digitally shared QR codes).
+- IP addresses cannot reliably identify individuals.
+- Depends on reliable internet/network access.
+- Eligibility rules vary by department/institution, so thresholds must remain configurable rather than hard-coded.
+
+## Future Improvements
+
+- Push/email notifications for low attendance
+- Attendance analytics and downloadable reports
+- Integration with existing student information systems
+- Role-based administration and audit logs
+- Auto-expiring QR codes
+- Geolocation-based verification (where legally permitted)
+- Device/session verification
+- Automated suspicious-pattern alerts
+
+## Expected Outcome
+
+A functional web application where lecturers create sessions and generate QR codes, students authenticate and check in, and the system maintains attendance records while automatically calculating marks, percentages, and examination eligibility.
+
+## Conclusion
+
+This project replaces manual, error-prone attendance tracking with a centralized digital platform that connects attendance directly to examination eligibility — giving students transparency and reducing administrative burden for lecturers, while applying core software engineering principles: web development, database design, authentication, and security.
