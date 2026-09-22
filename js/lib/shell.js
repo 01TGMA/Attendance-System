@@ -2,9 +2,9 @@
 // Usage: Shell.render({ role: 'student', active: 'dashboard', navItems: [...] })
 
 const Shell = {
-  render({ role, active, navItems }) {
+  async render({ role, active, navItems }) {
     const base = window.BASE_PATH || './';
-    const user = Store.requireAuth(role);
+    const user = await Store.requireAuth(role);
     if (!user) return null;
 
     const root = document.getElementById('app-shell-root');
@@ -64,8 +64,8 @@ const Shell = {
       });
     });
 
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      Store.logout();
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await Store.logout();
       window.location.href = base + 'index.html';
     });
 
