@@ -1,90 +1,88 @@
-// ==========================================================================
-// Store: mock data + auth/session state.
-// This file is the seam that gets swapped for real Supabase calls later —
-// every function here has a matching TODO noting what it will become.
-// ==========================================================================
 
-const ATTENDANCE_THRESHOLD = 75;
+const ATTENDANCE_THRESHOLD_DEFAULT = 75;
 
 function attendancePct(attended, total) {
   if (total === 0) return 100;
   return Math.round((attended / total) * 100);
 }
 
-function isEligible(pct) {
-  return pct >= ATTENDANCE_THRESHOLD;
+function isEligible(pct, threshold = ATTENDANCE_THRESHOLD_DEFAULT) {
+  return pct >= threshold;
 }
 
 function initials(name) {
-  return name
+  return (name || '?')
     .split(' ')
     .map((p) => p[0])
+    .filter(Boolean)
     .slice(0, 2)
     .join('')
     .toUpperCase();
 }
 
-// ---------- Mock dataset (stand-in for Supabase tables) ----------
-
-const studentCourses = [
-  { id: 'cs301', name: 'Data Structures & Algorithms', code: 'CS301', lecturer: 'Dr. Amara Okafor', attendedSessions: 27, totalSessions: 30, marks: 42, maxMarks: 50 },
-  { id: 'cs315', name: 'Database Systems', code: 'CS315', lecturer: 'Prof. Liam Chen', attendedSessions: 20, totalSessions: 28, marks: 31, maxMarks: 40 },
-  { id: 'cs320', name: 'Operating Systems', code: 'CS320', lecturer: 'Dr. Sofia Marín', attendedSessions: 15, totalSessions: 26, marks: 18, maxMarks: 40 },
-  { id: 'ma210', name: 'Linear Algebra', code: 'MA210', lecturer: 'Dr. Ravi Menon', attendedSessions: 22, totalSessions: 24, marks: 36, maxMarks: 45 },
-];
-
-function makeRoster(count) {
-  const names = ['Ava Thompson', 'Noah Williams', 'Mia Rodriguez', 'Ethan Patel', 'Isla Nguyen', 'Lucas Silva', 'Zara Ahmed', 'Oliver Brooks', 'Priya Sharma', 'Daniel Kim', 'Grace Bennett', 'Mateo Rossi', 'Chloe Dubois', 'Aiden Murphy', 'Layla Hassan', 'Ben Carter'];
-  const pcts = [92, 88, 81, 76, 70, 64, 96, 85, 79, 73, 68, 90, 83, 77, 60, 87];
-  return Array.from({ length: count }, (_, i) => ({
-    id: `stu-${i + 1}`,
-    name: names[i % names.length],
-    studentId: `2023${String(1000 + i)}`,
-    attendancePct: pcts[i % pcts.length],
-  }));
+// Renders a simple inline error state into a container — used by every
+// page script when a Supabase call fails, instead of a blank/broken page.
+function renderError(container, err) {
+  container.innerHTML = `
+    <div class="card" style="max-width:28rem;">
+      <div class="card-content" style="text-align:center;padding:2rem 1.5rem;">
+        <p style="font-weight:600;margin:0 0 0.4rem;color:var(--color-destructive);">Something went wrong</p>
+        <p class="text-muted" style="margin:0;font-size:0.875rem;">${(err && err.message) || 'Please try again.'}</p>
+      </div>
+    </div>
+  `;
 }
-
-function makeSessions(count, total) {
-  const base = new Date('2025-08-25T09:00:00');
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i * 3);
-    return {
-      id: `sess-${i + 1}`,
-      date: d.toISOString(),
-      mark: [1, 2, 1, 3, 2, 1, 2][i % 7],
-      durationMin: [5, 10, 5, 15][i % 4],
-      attendanceCount: total - (i % 5),
-      totalStudents: total,
-    };
-  }).reverse();
-}
-
-const lecturerCourses = [
-  { id: 'cs301', name: 'Data Structures & Algorithms', code: 'CS301', studentCount: 48, sessions: makeSessions(6, 48), roster: makeRoster(12) },
-  { id: 'cs410', name: 'Distributed Systems', code: 'CS410', studentCount: 32, sessions: makeSessions(4, 32), roster: makeRoster(10) },
-  { id: 'cs360', name: 'Software Engineering', code: 'CS360', studentCount: 56, sessions: makeSessions(8, 56), roster: makeRoster(14) },
-];
-
-// ---------- Auth/session (mock — swap for supabase.auth later) ----------
 
 const Store = {
-  // TODO(supabase): replace with supabase.auth.getSession() / onAuthStateChange
-  getUser() {
-    const raw = localStorage.getItem('ap_user');
-    return raw ? JSON.parse(raw) : null;
+  _user: null, 
+
+  // ---- auth ----
+
+  async getUser() {
+    const { data: { session }, error: sessionError } = await window.sb.auth.getSession();
+    if (sessionError || !session) { this._user = null; return null; }
+
+    const { data: profile, error: profileError } = await window.sb
+      .from('profiles')
+      .select('id, full_name, role, student_id')
+      .eq('id', session.user.id)
+      .single();
+    if (profileError || !profile) { this._user = null; return null; }
+
+    this._user = {
+      id: session.user.id,
+      email: session.user.email,
+      name: profile.full_name,
+      role: profile.role,
+      studentId: profile.student_id,
+    };
+    return this._user;
   },
-  // TODO(supabase): replace with supabase.auth.signInWithPassword / signUp
-  login(user) {
-    localStorage.setItem('ap_user', JSON.stringify(user));
+
+  async login(email, password) {
+    const { data, error } = await window.sb.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data;
   },
-  // TODO(supabase): replace with supabase.auth.signOut()
-  logout() {
-    localStorage.removeItem('ap_user');
+
+  async register({ name, email, password, role, studentId }) {
+    const { data, error } = await window.sb.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name, role, student_id: studentId || null } },
+    });
+    if (error) throw error;
+    return data; // data.session is null if email confirmation is required
   },
-  requireAuth(expectedRole) {
+
+  async logout() {
+    await window.sb.auth.signOut();
+    this._user = null;
+  },
+
+  async requireAuth(expectedRole) {
     const base = window.BASE_PATH || './';
-    const user = this.getUser();
+    const user = await this.getUser();
     if (!user) {
       window.location.href = base + 'index.html';
       return null;
@@ -95,9 +93,188 @@ const Store = {
     }
     return user;
   },
-  // ---- data getters (TODO(supabase): replace with `.from(table).select()` calls) ----
-  studentCourses() { return studentCourses; },
-  lecturerCourses() { return lecturerCourses; },
-  lecturerCourseById(id) { return lecturerCourses.find((c) => c.id === id); },
-};
 
+  // ---- student data ----
+
+  async studentCourses() {
+    const studentId = this._user.id;
+
+    const { data: enrollments, error: e1 } = await window.sb
+      .from('enrollments')
+      .select('course:courses(id, name, code, eligibility_threshold, lecturer:profiles(full_name))')
+      .eq('student_id', studentId);
+    if (e1) throw e1;
+    if (!enrollments || enrollments.length === 0) return [];
+
+    const courseIds = enrollments.map((e) => e.course.id);
+
+    const { data: sessions, error: e2 } = await window.sb
+      .from('sessions')
+      .select('id, course_id, mark_value')
+      .in('course_id', courseIds);
+    if (e2) throw e2;
+
+    const { data: myRecords, error: e3 } = await window.sb
+      .from('attendance_records')
+      .select('session_id')
+      .eq('student_id', studentId);
+    if (e3) throw e3;
+
+    const attendedSessionIds = new Set((myRecords || []).map((r) => r.session_id));
+
+    return enrollments.map(({ course }) => {
+      const courseSessions = (sessions || []).filter((s) => s.course_id === course.id);
+      const attended = courseSessions.filter((s) => attendedSessionIds.has(s.id));
+      return {
+        id: course.id,
+        name: course.name,
+        code: course.code,
+        lecturer: (course.lecturer && course.lecturer.full_name) || 'TBA',
+        eligibilityThreshold: course.eligibility_threshold ?? ATTENDANCE_THRESHOLD_DEFAULT,
+        totalSessions: courseSessions.length,
+        attendedSessions: attended.length,
+        maxMarks: courseSessions.reduce((a, s) => a + Number(s.mark_value), 0),
+        marks: attended.reduce((a, s) => a + Number(s.mark_value), 0),
+      };
+    });
+  },
+
+// Atendance 
+
+  async markAttendance(qrToken) {
+    const studentId = this._user.id;
+
+    const { data: session, error: sessErr } = await window.sb
+      .from('sessions')
+      .select('id, expires_at, course:courses(name)')
+      .eq('qr_token', qrToken)
+      .maybeSingle();
+    if (sessErr) throw sessErr;
+    if (!session) return { ok: false, reason: 'invalid' };
+    if (new Date(session.expires_at) <= new Date()) return { ok: false, reason: 'expired' };
+
+    const { error: insertErr } = await window.sb
+      .from('attendance_records')
+      .insert({ session_id: session.id, student_id: studentId });
+
+    if (insertErr) {
+      if (insertErr.code === '23505') { // unique_violation -> already scanned
+        return { ok: false, reason: 'duplicate', courseName: session.course?.name };
+      }
+      if (insertErr.code === '42501' || /row-level security/i.test(insertErr.message || '')) {
+        return { ok: false, reason: 'not_enrolled' };
+      }
+      throw insertErr;
+    }
+    return { ok: true, courseName: session.course?.name };
+  },
+
+  // ---- lecturer data ----
+
+  async _hydrateLecturerCourses(courses) {
+    const courseIds = courses.map((c) => c.id);
+    if (courseIds.length === 0) return [];
+
+    const { data: sessions, error: e1 } = await window.sb
+      .from('sessions')
+      .select('id, course_id, mark_value, expires_at, created_at')
+      .in('course_id', courseIds)
+      .order('created_at', { ascending: false });
+    if (e1) throw e1;
+
+    const { data: enrollments, error: e2 } = await window.sb
+      .from('enrollments')
+      .select('course_id, student:profiles(id, full_name, student_id)')
+      .in('course_id', courseIds);
+    if (e2) throw e2;
+
+    const sessionIds = (sessions || []).map((s) => s.id);
+    let records = [];
+    if (sessionIds.length) {
+      const { data, error: e3 } = await window.sb
+        .from('attendance_records')
+        .select('session_id, student_id')
+        .in('session_id', sessionIds);
+      if (e3) throw e3;
+      records = data || [];
+    }
+
+    return courses.map((course) => {
+      const courseSessions = (sessions || []).filter((s) => s.course_id === course.id);
+      const roster = (enrollments || []).filter((e) => e.course_id === course.id).map((e) => e.student);
+
+      const sessionsOut = courseSessions.map((s) => ({
+        id: s.id,
+        date: s.created_at,
+        expiresAt: s.expires_at,
+        mark: Number(s.mark_value),
+        attendanceCount: records.filter((r) => r.session_id === s.id).length,
+        totalStudents: roster.length,
+      }));
+
+      const rosterOut = roster.map((student) => {
+        const attended = courseSessions.filter((s) =>
+          records.some((r) => r.session_id === s.id && r.student_id === student.id)
+        ).length;
+        return {
+          id: student.id,
+          name: student.full_name,
+          studentId: student.student_id,
+          attendancePct: attendancePct(attended, courseSessions.length),
+        };
+      });
+
+      return {
+        id: course.id,
+        name: course.name,
+        code: course.code,
+        eligibilityThreshold: course.eligibility_threshold ?? ATTENDANCE_THRESHOLD_DEFAULT,
+        studentCount: roster.length,
+        sessions: sessionsOut,
+        roster: rosterOut,
+      };
+    });
+  },
+
+  async lecturerCourses() {
+    const { data: courses, error } = await window.sb
+      .from('courses')
+      .select('id, name, code, eligibility_threshold')
+      .eq('lecturer_id', this._user.id);
+    if (error) throw error;
+    return this._hydrateLecturerCourses(courses || []);
+  },
+
+  async lecturerCourseById(courseId) {
+    const { data: course, error } = await window.sb
+      .from('courses')
+      .select('id, name, code, eligibility_threshold')
+      .eq('id', courseId)
+      .single();
+    if (error) throw error;
+    const [hydrated] = await this._hydrateLecturerCourses([course]);
+    return hydrated;
+  },
+
+  // Creates a session, returns the row (including its DB-generated qr_token).
+  async createSession(courseId, markValue, durationMin) {
+    const expiresAt = new Date(Date.now() + durationMin * 60000).toISOString();
+    const { data, error } = await window.sb
+      .from('sessions')
+      .insert({ course_id: courseId, mark_value: markValue, expires_at: expiresAt })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  // Ends a session immediately by setting expires_at to now — the same
+  // expires_at check that blocks late scans blocks any further ones.
+  async endSession(sessionId) {
+    const { error } = await window.sb
+      .from('sessions')
+      .update({ expires_at: new Date().toISOString() })
+      .eq('id', sessionId);
+    if (error) throw error;
+  },
+};
