@@ -1,7 +1,6 @@
 // Student — My Courses
-// TODO(supabase): same query seam as dashboard.js — see note there.
 
-(function () {
+(async function () {
   const navItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: 'pages/student/dashboard.html' },
     { key: 'courses', label: 'My Courses', icon: 'book', href: 'pages/student/courses.html' },
@@ -9,18 +8,30 @@
     { key: 'profile', label: 'Profile', icon: 'user', href: 'pages/student/profile.html' },
   ];
 
-  const user = Shell.render({ role: 'student', active: 'courses', navItems });
+  const user = await Shell.render({ role: 'student', active: 'courses', navItems });
   if (!user) return;
 
   const main = document.getElementById('main-content');
   main.innerHTML = document.getElementById('tpl-courses').innerHTML;
 
-  const courses = Store.studentCourses();
+  let courses;
+  try {
+    courses = await Store.studentCourses();
+  } catch (err) {
+    renderError(main, err);
+    return;
+  }
+
   const grid = document.getElementById('course-grid');
+
+  if (courses.length === 0) {
+    grid.innerHTML = '<div class="empty-state">You are not enrolled in any courses yet.</div>';
+    return;
+  }
 
   grid.innerHTML = courses.map((course) => {
     const pct = attendancePct(course.attendedSessions, course.totalSessions);
-    const eligible = isEligible(pct);
+    const eligible = isEligible(pct, course.eligibilityThreshold);
     const badgeCls = eligible ? 'badge-default' : 'badge-destructive';
     const badgeIcon = eligible ? Icons.checkCircle('icon') : Icons.xCircle('icon');
     const badgeLabel = eligible ? 'Eligible' : 'Not Eligible';

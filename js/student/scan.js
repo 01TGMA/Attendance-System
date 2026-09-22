@@ -1,13 +1,11 @@
 // Student — Scan Attendance
-// Uses html5-qrcode for real camera access + QR decoding.
-// TODO(supabase): on decode, instead of the mock validateToken() below, call:
-//   1. look up sessions row where qr_token = decoded value and expires_at > now()
-//   2. verify an enrollments row exists for (student_id, session.course_id)
-//   3. insert into attendance_records (session_id, student_id) — the
-//      unique(session_id, student_id) constraint + RLS policy enforce the
-//      rest (no duplicate scans, no unenrolled students, no expired sessions)
+// Real camera QR decode (html5-qrcode) -> Store.markAttendance(qrToken),
+// which inserts into attendance_records. The database is the source of
+// truth for "already scanned" (unique constraint), "expired" (expires_at
+// check), and "not enrolled" (RLS policy) — this page just surfaces
+// whatever the database decided.
 
-(function () {
+(async function () {
   const navItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: 'pages/student/dashboard.html' },
     { key: 'courses', label: 'My Courses', icon: 'book', href: 'pages/student/courses.html' },
@@ -15,7 +13,7 @@
     { key: 'profile', label: 'Profile', icon: 'user', href: 'pages/student/profile.html' },
   ];
 
-  const user = Shell.render({ role: 'student', active: 'scan', navItems });
+  const user = await Shell.render({ role: 'student', active: 'scan', navItems });
   if (!user) return;
 
   const main = document.getElementById('main-content');
@@ -46,7 +44,6 @@
       error: Icons.xCircle('icon icon-lg'),
     };
     els.iconCenter.className = `scan-icon-center ${next}`;
-    // Hide the placeholder icon once the live camera feed is visible.
     els.iconCenter.innerHTML = (next === 'scanning') ? '' : iconMap[next];
 
     els.status.className = `scan-status ${next === 'error' ? 'error' : next === 'success' ? 'success' : ''}`;
@@ -69,11 +66,12 @@
     }
   }
 
-  // Mock validation of a decoded QR value. Real version checks Supabase.
-  function validateToken(decodedText) {
-    // Our lecturer-side QR encodes: attendpro://<courseCode>/<durationMin>/<mark>
-    return decodedText && decodedText.startsWith('attendpro://');
-  }
+  const REASON_MESSAGES = {
+    invalid: 'Invalid QR code. Make sure you scanned the code your lecturer is displaying.',
+    expired: 'This session has expired. Ask your lecturer to start a new one.',
+    duplicate: 'You have already marked attendance for this session.',
+    not_enrolled: 'You are not enrolled in this course, so attendance cannot be recorded.',
+  };
 
   async function stopCamera() {
     if (html5Qr) {
@@ -94,11 +92,17 @@
         async (decodedText) => {
           await stopCamera();
           els.readerEl.style.display = 'none';
-          if (validateToken(decodedText)) {
-            const course = decodedText.split('/')[2] || 'your course';
-            setStatus('success', `${Icons.checkCircle('icon')} Attendance marked for ${course}`);
-          } else {
-            setStatus('error', `${Icons.xCircle('icon')} Invalid or expired QR code. Try again.`);
+
+          try {
+            const result = await Store.markAttendance(decodedText.trim());
+            if (result.ok) {
+              setStatus('success', `${Icons.checkCircle('icon')} Attendance marked for ${result.courseName || 'your course'}`);
+            } else {
+              const msg = REASON_MESSAGES[result.reason] || 'Could not record attendance.';
+              setStatus('error', `${Icons.xCircle('icon')} ${msg}`);
+            }
+          } catch (err) {
+            setStatus('error', `${Icons.xCircle('icon')} ${err.message || 'Could not record attendance.'}`);
           }
         },
         () => { /* per-frame decode failures — ignore, keep scanning */ }

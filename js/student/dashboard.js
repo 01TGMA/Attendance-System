@@ -1,9 +1,6 @@
 // Student Dashboard
-// TODO(supabase): replace Store.studentCourses() with a query joining
-//   enrollments -> courses -> attendance_records for the current student,
-//   e.g. supabase.from('enrollments').select('course:courses(*), attendance_records(*)').eq('student_id', user.id)
 
-(function () {
+(async function () {
   const navItems = [
     { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: 'pages/student/dashboard.html' },
     { key: 'courses', label: 'My Courses', icon: 'book', href: 'pages/student/courses.html' },
@@ -11,7 +8,7 @@
     { key: 'profile', label: 'Profile', icon: 'user', href: 'pages/student/profile.html' },
   ];
 
-  const user = Shell.render({ role: 'student', active: 'dashboard', navItems });
+  const user = await Shell.render({ role: 'student', active: 'dashboard', navItems });
   if (!user) return;
 
   const main = document.getElementById('main-content');
@@ -21,7 +18,19 @@
   document.getElementById('icon-award').innerHTML = Icons.award('icon');
   document.getElementById('icon-book').innerHTML = Icons.book('icon');
 
-  const courses = Store.studentCourses();
+  let courses;
+  try {
+    courses = await Store.studentCourses();
+  } catch (err) {
+    renderError(main, err);
+    return;
+  }
+
+  if (courses.length === 0) {
+    main.innerHTML = '<div class="empty-state">You are not enrolled in any courses yet.</div>';
+    return;
+  }
+
   const totalAttended = courses.reduce((a, c) => a + c.attendedSessions, 0);
   const totalSessions = courses.reduce((a, c) => a + c.totalSessions, 0);
   const overallPct = attendancePct(totalAttended, totalSessions);
@@ -43,7 +52,7 @@
       </svg>
       <div class="circular-progress-label">
         <span class="font-display" style="font-size:1.6rem;font-weight:700;">${overallPct}%</span>
-        <span class="stat-sub">min ${ATTENDANCE_THRESHOLD}%</span>
+        <span class="stat-sub">min ${ATTENDANCE_THRESHOLD_DEFAULT}%</span>
       </div>
     </div>
   `;
@@ -70,17 +79,17 @@
           <span class="meta">${course.code} &middot; ${course.lecturer}</span>
         </div>
         <div>
-          <div class="pct-row"><span class="text-muted"></span><span class="val ${pct < 75 ? 'low' : ''}">${pct}%</span></div>
+          <div class="pct-row"><span class="text-muted"></span><span class="val ${pct < course.eligibilityThreshold ? 'low' : ''}">${pct}%</span></div>
           <div class="progress"><div class="progress-indicator" style="width:${pct}%"></div></div>
         </div>
-        <div style="display:flex;justify-content:flex-end;">${eligibilityBadgeHtml(pct)}</div>
+        <div style="display:flex;justify-content:flex-end;">${eligibilityBadgeHtml(pct, '', course.eligibilityThreshold)}</div>
       </li>
     `;
   }).join('');
 })();
 
-function eligibilityBadgeHtml(pct, extraStyle = '') {
-  const eligible = isEligible(pct);
+function eligibilityBadgeHtml(pct, extraStyle = '', threshold = ATTENDANCE_THRESHOLD_DEFAULT) {
+  const eligible = isEligible(pct, threshold);
   const cls = eligible ? 'badge-default' : 'badge-destructive';
   const icon = eligible ? Icons.checkCircle('icon') : Icons.xCircle('icon');
   const label = eligible ? 'Eligible' : 'Not Eligible';
