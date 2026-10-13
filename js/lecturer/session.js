@@ -48,6 +48,10 @@
 
   document.getElementById('session-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (typeof QRCode === 'undefined') {
+      alert('QR library failed to load. Check your internet connection and reload the page.');
+      return;
+    }
     const mark = Number(document.getElementById('mark').value) || 1;
     const duration = Number(document.getElementById('duration').value) || 10;
     const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -65,9 +69,10 @@
   });
 
   function goLive(course, session) {
+    const liveHtml = document.getElementById('tpl-session-live').innerHTML;
     document.body.innerHTML = '';
     const wrap = document.createElement('div');
-    wrap.innerHTML = document.getElementById('tpl-session-live').innerHTML;
+    wrap.innerHTML = liveHtml;
     document.body.appendChild(wrap);
 
     document.getElementById('live-brand-icon').innerHTML = Icons.graduationCap('icon');
