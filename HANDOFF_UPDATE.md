@@ -22,10 +22,11 @@ Other fixes made along the way. The original handoff said these worked; they did
 - The session page crashed after creating a session (it cleared the page before reading its own template). Fixed in `js/lecturer/session.js`.
 - The QR library URL (`qrcode@1.5.3`) returned 404. Now `qrcode@1.4.4`.
 - Live attendance needed `attendance_records` added to the realtime publication (`002`).
+- The anti-fraud claim in the original brief was not true: enrolled students could mark attendance without the QR token. `004` moves the token to `session_tokens` (readable only by the course's lecturer) and routes all attendance through `mark_attendance()`. Students can no longer insert into `attendance_records` directly.
 
 ## Setup order
 
-1. Create a Supabase project. In the SQL editor run, in this order: `schema.sql`, `policies.sql`, `functions.sql`, `001_fix_policies_and_signup.sql`, `002_realtime.sql`, `003_departments_and_catalog.sql`.
+1. Create a Supabase project. In the SQL editor run, in this order: `schema.sql`, `policies.sql`, `functions.sql`, `001_fix_policies_and_signup.sql`, `002_realtime.sql`, `003_departments_and_catalog.sql`, `004_enforce_qr_scan.sql`.
 2. Put your project URL and **anon** key in `js/lib/client.js`. Never use the service_role key. Do not commit real keys.
 3. For development, turn off Authentication > Providers > Email > Confirm email. Turn it back on before real use.
 4. Serve with Live Server or `python3 -m http.server`. The scanner needs `localhost` or HTTPS for camera access.
@@ -37,9 +38,11 @@ Registration and login for both roles, course creation from the catalog, departm
 
 From the browser console as a student: updating `role` and `department_id` on one's own profile and inserting into `enrollments` were all rejected (two 400s and a 403). The exact error messages of the two 400s were not read, so they are believed, not confirmed, to be the trigger's messages.
 
+After `004`: scanning, duplicate rejection, expiry and the live feed were retested. From the console, a student's direct insert into `attendance_records` returns 403, `session_tokens` returns no rows while a session is live, and `mark_attendance` with a made-up token returns `invalid`.
+
 ## Known issues, most important first
 
-1. **The QR token is not enforced. Do not call this fraud-proof.** Enrolled students can read `sessions.qr_token`, and the attendance insert policy checks session, enrollment and expiry but never the token. A student can mark attendance for an active session without being in the room. Fix: a `mark_attendance(token)` database function, hide `qr_token` from students, and call it from `Store.markAttendance`.
+1. **A forwarded QR code still works. Do not call this fraud-proof.** A student can no longer mark attendance without the token (`004`), but the token is static for the whole session, so a photo of the QR sent to someone outside the room works until the session expires. Fix: rotate the token every ~20 seconds (the lecturer page requests a new one, and `mark_attendance` accepts tokens under ~45 seconds old).
 2. **Anyone can register as a lecturer.** A fake lecturer can create offerings that appear in students' join lists. Needs admin approval (and probably a staff ID).
 3. **A course with no sessions shows 100% and eligible.** Wrong default for an eligibility system (`attendancePct` in `store.js`).
 4. **Unescaped HTML.** Escaping was added only in `lecturer/dashboard.js` and `student/courses.js`. `shell.js`, `lecturer/course.js` and `lecturer/session.js` still put names into `innerHTML`.
