@@ -9,3 +9,4 @@
 const SUPABASE_URL = 'Your Supabase URL here';
 const SUPABASE_ANON_KEY = 'Your Supabase ANON KEY here';
 window.sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
