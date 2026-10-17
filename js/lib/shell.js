@@ -36,10 +36,10 @@ const Shell = {
           </div>
           <div class="flex items-center gap-3">
             <div class="user-meta">
-              <div class="name">${user.name}</div>
-              <div class="email">${user.email}</div>
+              <div class="name">${esc(user.name)}</div>
+              <div class="email">${esc(user.email)}</div>
             </div>
-            <span class="avatar avatar-inverted">${initials(user.name)}</span>
+            <span class="avatar avatar-inverted">${esc(initials(user.name))}</span>
             <button class="header-btn" id="logout-btn" aria-label="Log out">${Icons.logout('icon')}</button>
           </div>
         </div>
