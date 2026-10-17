@@ -34,7 +34,7 @@
       <span class="profile-row-icon">${Icons[row.icon]('icon')}</span>
       <div>
         <dt>${row.label}</dt>
-        <dd>${row.value}</dd>
+        <dd>${esc(row.value)}</dd>
       </div>
     </div>
   `).join('');

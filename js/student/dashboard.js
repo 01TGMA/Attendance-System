@@ -75,8 +75,8 @@
     return `
       <li class="course-row">
         <div>
-          <span class="name">${course.name}</span>
-          <span class="meta">${course.code} &middot; ${course.lecturer}</span>
+          <span class="name">${esc(course.name)}</span>
+          <span class="meta">${esc(course.code)} &middot; ${esc(course.lecturer)}</span>
         </div>
         <div>
           <div class="pct-row"><span class="text-muted"></span><span class="val ${pct < course.eligibilityThreshold ? 'low' : ''}">${pct}%</span></div>
