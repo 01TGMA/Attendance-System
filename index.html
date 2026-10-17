@@ -47,6 +47,11 @@
           <input class="input" id="studentId" placeholder="e.g. 20231042" inputmode="numeric">
         </div>
 
+        <div class="field" id="department-field" style="display:none;">
+          <label class="field-label" for="department">Department</label>
+          <select class="input" id="department"><option value="">Loading...</option></select>
+        </div>
+
         <button type="submit" class="btn btn-primary btn-lg btn-block" id="submit-btn">Login</button>
       </form>
     </div>
@@ -58,6 +63,8 @@
   </div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="js/lib/client.js"></script>
 <script src="js/lib/icons.js"></script>
 <script src="js/lib/store.js"></script>
 <script src="js/auth/auth.js"></script>

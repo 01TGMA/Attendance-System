@@ -10,6 +10,12 @@ function isEligible(pct, threshold = ATTENDANCE_THRESHOLD_DEFAULT) {
   return pct >= threshold;
 }
 
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 function initials(name) {
   return (name || '?')
     .split(' ')
@@ -27,7 +33,7 @@ function renderError(container, err) {
     <div class="card" style="max-width:28rem;">
       <div class="card-content" style="text-align:center;padding:2rem 1.5rem;">
         <p style="font-weight:600;margin:0 0 0.4rem;color:var(--color-destructive);">Something went wrong</p>
-        <p class="text-muted" style="margin:0;font-size:0.875rem;">${(err && err.message) || 'Please try again.'}</p>
+        <p class="text-muted" style="margin:0;font-size:0.875rem;">${esc((err && err.message) || 'Please try again.')}</p>
       </div>
     </div>
   `;
@@ -44,7 +50,7 @@ const Store = {
 
     const { data: profile, error: profileError } = await window.sb
       .from('profiles')
-      .select('id, full_name, role, student_id')
+      .select('id, full_name, role, student_id, department_id')
       .eq('id', session.user.id)
       .single();
     if (profileError || !profile) { this._user = null; return null; }
@@ -55,6 +61,7 @@ const Store = {
       name: profile.full_name,
       role: profile.role,
       studentId: profile.student_id,
+      departmentId: profile.department_id,
     };
     return this._user;
   },
@@ -65,12 +72,11 @@ const Store = {
     return data;
   },
 
-  async register({ name, email, password, role, studentId }) {
+  async register({ name, email, password, role, studentId, departmentId }) {
     const { data, error } = await window.sb.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name, role, student_id: studentId || null } },
-    });
+      options: { data: { full_name: name, role, student_id: studentId || null, department_id: departmentId || null } },});
     if (error) throw error;
     return data; // data.session is null if email confirmation is required
   },
@@ -142,31 +148,11 @@ const Store = {
 // Atendance 
 
   async markAttendance(qrToken) {
-    const studentId = this._user.id;
-
-    const { data: session, error: sessErr } = await window.sb
-      .from('sessions')
-      .select('id, expires_at, course:courses(name)')
-      .eq('qr_token', qrToken)
-      .maybeSingle();
-    if (sessErr) throw sessErr;
-    if (!session) return { ok: false, reason: 'invalid' };
-    if (new Date(session.expires_at) <= new Date()) return { ok: false, reason: 'expired' };
-
-    const { error: insertErr } = await window.sb
-      .from('attendance_records')
-      .insert({ session_id: session.id, student_id: studentId });
-
-    if (insertErr) {
-      if (insertErr.code === '23505') { // unique_violation -> already scanned
-        return { ok: false, reason: 'duplicate', courseName: session.course?.name };
-      }
-      if (insertErr.code === '42501' || /row-level security/i.test(insertErr.message || '')) {
-        return { ok: false, reason: 'not_enrolled' };
-      }
-      throw insertErr;
-    }
-    return { ok: true, courseName: session.course?.name };
+    const { data, error } = await window.sb.rpc('mark_attendance', {
+      p_qr_token: String(qrToken || ''),
+    });
+    if (error) throw error;
+    return { ok: data.ok, reason: data.reason, courseName: data.course_name };
   },
 
   // ---- lecturer data ----
@@ -265,8 +251,17 @@ const Store = {
       .select()
       .single();
     if (error) throw error;
-    return data;
+ 
+    const { data: tokenRow, error: tokenError } = await window.sb
+      .from('session_tokens')
+      .select('qr_token')
+      .eq('session_id', data.id)
+      .single();
+    if (tokenError) throw tokenError;
+ 
+    return { ...data, qr_token: tokenRow.qr_token };
   },
+ 
 
   // Ends a session immediately by setting expires_at to now — the same
   // expires_at check that blocks late scans blocks any further ones.
@@ -275,6 +270,74 @@ const Store = {
       .from('sessions')
       .update({ expires_at: new Date().toISOString() })
       .eq('id', sessionId);
+    if (error) throw error;
+  },
+  // ---- departments, catalog, joining ----
+ 
+  // Readable before login: the registration page uses it.
+  async departments() {
+    const { data, error } = await window.sb
+      .from('departments')
+      .select('id, name')
+      .order('name');
+    if (error) throw error;
+    return data || [];
+  },
+ 
+  // Lecturer: the full catalog, to pick a course to teach.
+  async catalogCourses() {
+    const { data, error } = await window.sb
+      .from('catalog_courses')
+      .select('id, code, title, level, semester')
+      .order('code');
+    if (error) throw error;
+    return data || [];
+  },
+ 
+  // Lecturer: create an offering of a catalog course. The database overwrites
+  // name and code from the catalog, so these values are only for convenience.
+  async createCourseFromCatalog(catalogCourse) {
+    const { data, error } = await window.sb
+      .from('courses')
+      .insert({
+        lecturer_id: this._user.id,
+        catalog_course_id: catalogCourse.id,
+        name: catalogCourse.title,
+        code: catalogCourse.code,
+      })
+      .select()
+      .single();
+    if (error) {
+      if (error.code === '23505') {
+        throw new Error('You already teach this course.');
+      }
+      throw error;
+    }
+    return data;
+  },
+ 
+  // Student: courses in my department, typo-tolerant. Empty query = all of them.
+  async searchJoinableCourses(query) {
+    const { data, error } = await window.sb.rpc('search_joinable_courses', {
+      p_query: query || '',
+    });
+    if (error) throw error;
+    return data || [];
+  },
+ 
+  // Student: join a course. The database checks the department.
+  async joinCourse(courseId) {
+    const { error } = await window.sb.rpc('join_course', { p_course_id: courseId });
+    if (error) throw error;
+  },
+ 
+  // Lecturer: remove a student from one of my courses.
+  async removeStudent(courseId, studentId) {
+    const { error } = await window.sb
+      .from('enrollments')
+      .delete()
+      .eq('course_id', courseId)
+      .eq('student_id', studentId);
     if (error) throw error;
   },
 };

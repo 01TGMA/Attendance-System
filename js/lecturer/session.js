@@ -48,6 +48,10 @@
 
   document.getElementById('session-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (typeof QRCode === 'undefined') {
+      alert('QR library failed to load. Check your internet connection and reload the page.');
+      return;
+    }
     const mark = Number(document.getElementById('mark').value) || 1;
     const duration = Number(document.getElementById('duration').value) || 10;
     const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -65,9 +69,10 @@
   });
 
   function goLive(course, session) {
+    const liveHtml = document.getElementById('tpl-session-live').innerHTML;
     document.body.innerHTML = '';
     const wrap = document.createElement('div');
-    wrap.innerHTML = document.getElementById('tpl-session-live').innerHTML;
+    wrap.innerHTML = liveHtml;
     document.body.appendChild(wrap);
 
     document.getElementById('live-brand-icon').innerHTML = Icons.graduationCap('icon');
@@ -144,10 +149,10 @@
       row.className = 'arrival-row animate-fade-slide-in';
       const at = new Date(markedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
       row.innerHTML = `
-        <span class="avatar avatar-sm">${initials(name)}</span>
+        <span class="avatar avatar-sm">${esc(initials(name))}</span>
         <div class="grow">
-          <span class="name truncate">${name}</span>
-          <span class="id">${sId}</span>
+          <span class="name truncate">${esc(name)}</span>
+          <span class="id">${esc(sId)}</span>
         </div>
         <span class="time">${at}</span>
         ${Icons.checkCircle('icon check')}
