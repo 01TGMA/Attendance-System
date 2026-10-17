@@ -149,10 +149,10 @@
       row.className = 'arrival-row animate-fade-slide-in';
       const at = new Date(markedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
       row.innerHTML = `
-        <span class="avatar avatar-sm">${initials(name)}</span>
+        <span class="avatar avatar-sm">${esc(initials(name))}</span>
         <div class="grow">
-          <span class="name truncate">${name}</span>
-          <span class="id">${sId}</span>
+          <span class="name truncate">${esc(name)}</span>
+          <span class="id">${esc(sId)}</span>
         </div>
         <span class="time">${at}</span>
         ${Icons.checkCircle('icon check')}
