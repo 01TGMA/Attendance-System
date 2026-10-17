@@ -10,6 +10,12 @@ function isEligible(pct, threshold = ATTENDANCE_THRESHOLD_DEFAULT) {
   return pct >= threshold;
 }
 
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
 function initials(name) {
   return (name || '?')
     .split(' ')
@@ -27,7 +33,7 @@ function renderError(container, err) {
     <div class="card" style="max-width:28rem;">
       <div class="card-content" style="text-align:center;padding:2rem 1.5rem;">
         <p style="font-weight:600;margin:0 0 0.4rem;color:var(--color-destructive);">Something went wrong</p>
-        <p class="text-muted" style="margin:0;font-size:0.875rem;">${(err && err.message) || 'Please try again.'}</p>
+        <p class="text-muted" style="margin:0;font-size:0.875rem;">${esc((err && err.message) || 'Please try again.')}</p>
       </div>
     </div>
   `;
